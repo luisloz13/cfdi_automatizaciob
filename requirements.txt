@@ -1,2 +1,8 @@
 playwright
 keyring
+# Solo para auto_clasificador.py
+openai
+google-genai
+cryptography
+pandas
+openpyxl

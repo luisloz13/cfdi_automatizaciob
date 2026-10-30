@@ -1,3 +1,8 @@
 ﻿captcha.png
-cfdi.log
+cfdi.log*
+errores/
 __pycache__/
+.venv/
+*.part
+*_clasificado.csv
+.env
