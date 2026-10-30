@@ -6,7 +6,8 @@ Herramientas en Python para un despacho contable:
 |---|---|
 | `cfdi_sat.py` | Descarga los CFDI (emitidos y recibidos) del portal del SAT para varios clientes y los guarda en carpetas ordenadas. |
 | `guardar_credencial.py` | Guarda la CIEC de un cliente en el Administrador de credenciales de Windows. |
-| `auto_clasificador.py` | Clasifica gastos ambiguos de un estado de cuenta en el catálogo contable usando IA (Azure OpenAI o Google Vertex AI). Es independiente de los demás. |
+| `auto_clasificador.py` | Clasifica gastos ambiguos de un estado de cuenta en el catálogo contable usando IA (Azure OpenAI o Google Vertex AI). Se puede usar solo o desde `conciliador.py`. |
+| `conciliador.py` | Lee los XML descargados, los concilia contra el estado de cuenta bancario y (opcional) clasifica con IA. Genera un Excel. |
 
 ## Requisitos
 
@@ -119,6 +120,46 @@ Salida de ejemplo:
 Códigos de salida: `0` ok, `2` terminó con filas fallidas, `1` error, `130` cancelado.
 
 > **Nota:** `cryptography.fernet` usa AES-128-CBC con HMAC, no AES-256.
+
+## 3. Conciliación bancaria (`conciliador.py`)
+
+Flujo mensual completo: `cfdi_sat.py` descarga → `conciliador.py` lee, concilia y clasifica → Excel.
+
+```powershell
+python conciliador.py --rfc XAXX010101000 --anio 2026 --mes 9 --estado-cuenta banco.xlsx
+python conciliador.py --rfc XAXX010101000 --anio 2026 --mes 9 --estado-cuenta banco.xlsx --provider azure
+python conciliador.py --rfc XAXX010101000 --anio 2026 --mes 9      # solo leer/clasificar los CFDI
+```
+
+| Opción | Descripción |
+|---|---|
+| `--rfc`, `--anio`, `--mes` | Cliente y periodo (obligatorios) |
+| `--estado-cuenta` | CSV/Excel del banco. Sin él solo se leen y clasifican los CFDI |
+| `--destino` | Carpeta donde `cfdi_sat.py` guardó los XML |
+| `--provider` | `azure` o `gcp`: activa la clasificación con IA |
+| `--tolerancia` | Diferencia máxima de monto en MXN (default 0.01) |
+| `--ventana-dias` | Días máximos entre la fecha del CFDI y el pago (default 45) |
+| `--meses-atras` | Meses previos de CFDI a considerar, porque un pago puede cubrir facturas anteriores (default 1) |
+| `--cargos-positivos` | Si en la columna `monto` los cargos vienen en positivo |
+| `--salida` | Ruta del Excel (default `conciliacion_<RFC>_<AAAA>-<MM>.xlsx`) |
+
+**Estado de cuenta:** columnas `fecha`, `concepto` (o `descripcion`) y `monto` con los cargos en negativo, o bien `cargo` y `abono` por separado. Fechas `AAAA-MM-DD` o `DD/MM/AAAA`. Los movimientos fuera del mes pedido se ignoran.
+
+**Cómo concilia**
+- Lee CFDI 3.3 y 4.0 (facturas, notas de crédito, nómina y complementos de pago). Convierte a MXN las facturas en otra moneda con su tipo de cambio.
+- Empareja cada movimiento con un CFDI por monto, signo (cargo/abono según sea emitido o recibido) y fecha. El puntaje sube si el RFC, el nombre o el folio aparecen en el concepto bancario.
+- También detecta un pago que cubre 2 o 3 facturas del mismo proveedor o cliente.
+- **Facturas PPD:** no cruzan directo con el banco; se concilian con su complemento de pago (tipo P) y aparecen en "CFDI sin mov" con una nota.
+- Cada par lleva confianza Alto/Medio/Bajo. Si hay varios candidatos parecidos, baja un nivel. **Revisa siempre los Bajo.**
+
+**Clasificación (con `--provider`)**: se clasifican los CFDI *recibidos* de tipo ingreso/egreso (usando proveedor, conceptos, uso de CFDI y clave de producto SAT) y los cargos del banco sin CFDI. Los emitidos y los abonos no se clasifican. Los CFDI repetidos de un mismo proveedor se clasifican una sola vez.
+
+**Hojas del Excel:** `Resumen`, `Conciliados`, `Mov sin CFDI` (el trabajo pendiente: cargos sin comprobante), `CFDI sin mov` y `CFDI` (detalle completo con clasificación).
+
+**Límites conocidos**
+- No verifica si un CFDI fue cancelado ante el SAT: el XML no lo indica.
+- No concilia pagos parciales de una misma factura ni un movimiento que cubra más de 3 facturas.
+- Solo mira CFDI de los meses ya descargados; un CFDI de un mes posterior al pedido no se considera.
 
 ## Seguridad
 

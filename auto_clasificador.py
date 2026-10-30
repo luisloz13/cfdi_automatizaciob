@@ -391,8 +391,8 @@ def clasificar_gasto(proveedor, concepto, monto, max_intentos: int = MAX_INTENTO
 # --------------------------------------------------------------------------- #
 # Procesamiento de archivos
 # --------------------------------------------------------------------------- #
-def leer_tabla(path: Path):
-    """Lee CSV (detecta delimitador y codificacion) o Excel."""
+def leer_tabla(path: Path, requeridas: tuple[str, ...] = ("concepto", "monto")):
+    """Lee CSV (detecta delimitador y codificacion) o Excel; exige las columnas `requeridas`."""
     import pandas as pd
 
     ext = path.suffix.lower()
@@ -416,8 +416,8 @@ def leer_tabla(path: Path):
         raise ClasificadorError(f"No se pudo leer {path.name}: {exc}") from exc
 
     df.columns = [str(c).strip().lower() for c in df.columns]
-    if not {"concepto", "monto"} <= set(df.columns):
-        raise ClasificadorError("El archivo debe tener las columnas 'concepto' y 'monto'.")
+    if not set(requeridas) <= set(df.columns):
+        raise ClasificadorError("El archivo debe tener las columnas " + ", ".join(f"'{c}'" for c in requeridas) + ".")
     if df.empty:
         raise ClasificadorError("El archivo no contiene filas.")
     return df
